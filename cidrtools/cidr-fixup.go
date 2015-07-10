@@ -48,5 +48,4 @@ func main() {
 		}
 	}
 
-	// TODO: dump out CIDR table, with adjacent addresses combined into one block
 }
