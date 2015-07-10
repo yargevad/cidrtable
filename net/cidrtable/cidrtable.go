@@ -20,10 +20,27 @@ type IpRangeNode struct {
 	nextNode *IpRangeNode /* Next node. */
 }
 
-type IpTable map[[]byte]IpRangeNode
+/* Key is a stringified IP w/o mask. */
+type IpTable map[string]IpRangeNode
 
 type CidrTable struct {
-	list    IpRangeNode /* Beginning of the list of IP Ranges, sorted ascending by IP. */
-	prevIps IpTable     /* List of IPs just before each Range, with a ref to the range. */
-	nextIps IpTable     /* List of IPs just after each Range, with a ref to the range. */
+	list    *IpRangeNode /* Beginning of the list of IP Ranges, sorted ascending by IP. */
+	prevIps IpTable      /* List of IPs just before each Range, with a ref to the range. */
+	nextIps IpTable      /* List of IPs just after each Range, with a ref to the range. */
+}
+
+func InitCidr() (*CidrTable, error) {
+	var c CidrTable
+	c.prevIps = make(IpTable)
+	c.nextIps = make(IpTable)
+	return &c, nil
+}
+
+func (c *CidrTable) AddCidr(cstr string) error {
+	//ip, ipnet, err := net.ParseCIDR(cstr)
+	_, _, err := net.ParseCIDR(cstr)
+	if err != nil {
+		return err
+	}
+	return nil
 }
