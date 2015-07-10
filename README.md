@@ -1,2 +1,2 @@
-# cidrtable
-Operations on groups of IP addresses and CIDR blocks
+# Go code
+This is where all my public Go code lives.
