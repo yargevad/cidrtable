@@ -10,14 +10,46 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
+	"github.com/yargevad/net/ip/convert"
 	"log"
-	"net"
 	"os"
 	"strings"
 )
 
+var toBinary = flag.Bool("binary", false, "convert to binary representation")
+var toHex = flag.Bool("hex", false, "convert to hexadecimal representation")
+
 func main() {
+	flag.Parse()
+
+	if (*toBinary == false) && (*toHex == false) {
+		log.Fatal("specify one of: binary hex")
+		os.Exit(1)
+	}
+
+	var convertTo int
+	if *toBinary {
+		convertTo = convert.Binary
+	} else if *toHex {
+		convertTo = convert.Hex
+	}
+
+	/* If there is more input on the command line, process that and exit */
+	if len(flag.Args()) > 0 {
+		for _, v := range flag.Args() {
+			b, err := convert.ConvertIP(v, convertTo)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
+			} else {
+				fmt.Println(b)
+			}
+		}
+		return
+	}
+
+	/* Process STDIN and exit when we get EOF or a blank line */
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -26,36 +58,12 @@ func main() {
 			break
 		}
 
-		/* Get index of forward slash (indicating subnet), < 0 if not there. */
-		fwdSlashIdx := strings.IndexRune(line, '/')
-		var ip net.IP
-		//var ipnet *net.IPNet
-		var err interface{}
-
-		if fwdSlashIdx < 0 {
-			/* No forward slash, use net.ParseIP */
-			ip = net.ParseIP(line)
-			if ip == nil {
-				err = fmt.Sprintf("couldn't parse ip [%s]", line)
-			}
-		} else {
-			/* We have a forward slash, use net.ParseIP */
-			ip, _, err = net.ParseCIDR(line)
-		}
-
+		b, err := convert.ConvertIP(line, convertTo)
 		if err != nil {
-			log.Printf("WARNING: %s\n", err)
+			fmt.Fprintf(os.Stderr, "ERROR: %s\n", err)
 		} else {
-			p := ip
-			if p4 := p.To4(); len(p4) == net.IPv4len {
-				for i := 0; i < 4; i++ {
-					if i > 0 {
-						fmt.Print(".")
-					}
-					fmt.Printf("%08b", uint(p4[i]))
-				}
-			}
-			fmt.Println("")
+			fmt.Println(b)
 		}
+
 	}
 }
