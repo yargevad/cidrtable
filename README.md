@@ -1,2 +1,2 @@
 # Go code
-This is where all my public Go code lives.
+This is where my random Go code lives.
