@@ -183,59 +183,95 @@ func ApplyOperator(a, b float64, op int) float64 {
 	return float64(0.0)
 }
 
-type Eval struct {
-	Int    int
-	String string
+type Combo struct {
+	Numbers   []int
+	Operators []int
+	Results   []Eval
 }
 
-// Evaluate returns the result of the calculation given by interleaving `nums` and `ops`.
-// Operator precedence and any parenthesis placement are taken into account, thus the `[]int` return value.
-func Evaluate(nums, ops []int) []Eval {
-	var precedence = Precedence(ops)
-	var res = Eval{Int: -1}
+// Evaluate performs the calculation(s) given by interleaving `nums` and `ops`.
+// Operator precedence and any parenthesis placement are taken into account.
+// Any existing `Results` are cleared before calculation.
+// The results are placed into the aptly-named `Results` field.
+func (c *Combo) Evaluate() {
+	var precedence = Precedence(c.Operators)
+	c.Results = nil
 
 	if Uniform(precedence) {
 		// all operators have the same precedence, evaluate left to right
-		// ex: (1+2+3+4)
-		var numlen = len(nums)
-
-		// set initial state to first number
-		var tmp = float64(nums[0])
+		// ex: (1+2+3+4) (1*2*3*4) (1/2/3/4) (1-2-3-4)
+		current := Eval{Total: -1}
+		total := float64(c.Numbers[0])
 
 		// `len(nums)` must always be `len(ops)+1` (asserted elsewhere)
 		// iterate over operators, applying number with next index
-		for n := 0; n < len(ops); n++ {
-			tmp = ApplyOperator(tmp, float64(nums[n+1]), ops[n])
+		for n := 0; n < len(c.Operators); n++ {
+			total = ApplyOperator(total, float64(c.Numbers[n+1]), c.Operators[n])
 		}
+		current.Float = total
+		current.Total = int(math.Floor(total))
+		current.combo = c
 
-		// TODO: parens
+		c.Results = append(c.Results, current)
+		return
+	}
+
+	// FIXME: handle these cases
+	// (8/3)-8/3
+	// (8/3-8)/3
+	// 8/(3-8)/3
+	// 8/(3-8/3)
+	// 8/3-(8/3)
+
+	current := &Eval{combo: c}
+	// iterate over all paren possibilities
+	for i := 0; i < len(c.Numbers)-1; i++ {
+		// outer counter indicates which index paren should come before
+		for j := i + 1; j < len(c.Numbers); j++ {
+			// inner counter indicates which index paren should come after
+			current.Parens = []int{i, j}
+			fmt.Printf("%s\n", current.String())
+			// handle parens first
+			// then precedence=5 pairs
+			// then precedence=4 pairs
+			current.Str = ""
+		}
+	}
+
+}
+
+type Eval struct {
+	Parens []int
+	Str    string // populated lazily
+	Float  float64
+	Total  int
+
+	// makes it easier to stringify
+	combo *Combo
+}
+
+// String transforms an `Eval` into a human-readable format
+func (e *Eval) String() string {
+	if e.combo == nil {
+		return ""
+	} else if e.Str == "" {
 		expression := strings.Builder{}
+		numlen := len(e.combo.Numbers)
 		for n := 0; n < numlen; n++ {
-			expression.WriteString(strconv.Itoa(nums[n]))
+			if len(e.Parens) == 2 && e.Parens[0] == n {
+				expression.WriteString("(")
+			}
+			expression.WriteString(strconv.Itoa(e.combo.Numbers[n]))
+			if len(e.Parens) == 2 && e.Parens[1] == n {
+				expression.WriteString(")")
+			}
 			if n < (numlen - 1) {
-				expression.WriteString(Operator(ops[n]).String())
+				expression.WriteString(Operator(e.combo.Operators[n]).String())
 			}
 		}
-		res.String = expression.String()
-
-		// whole numbers only
-		if math.Floor(tmp) != tmp {
-			return []Eval{res}
-		}
-		res.Int = int(math.Round(tmp))
-		return []Eval{res}
-
-	} else {
-		// FIXME: precedence is busted here
-		// FIXME: parens
-		// (1*2+3*4)
-		// (8/3)-8/3
-		// (8/3-8)/3
-		// 8/(3-8)/3
-		// 8/(3-8/3)
-		// 8/3-(8/3)
+		e.Str = expression.String()
 	}
-	return []Eval{res}
+	return e.Str
 }
 
 func main() {
@@ -268,16 +304,17 @@ func main() {
 		log.Printf("found %d operator permutations (with repetition)\n%+v\n", len(operators), operators)
 	}
 
+	// for each permutation of numbers
 	for _, nums := range numbers {
+		// for each permutation of operators
 		for _, ops := range operators {
-			results := Evaluate(nums, ops)
-			for _, result := range results {
-				if *verbose || result.Int == *target {
-					if result.Int == *target {
-						fmt.Printf("%s = %d !!!", result.String, result.Int)
-					} else if *verbose {
-						log.Printf("%s = %d", result.String, result.Int)
-					}
+			combo := &Combo{Numbers: nums, Operators: ops}
+			combo.Evaluate()
+			for _, result := range combo.Results {
+				if result.Total == *target {
+					fmt.Printf("%s = %d MATCH\n", result.String(), result.Total)
+				} else if *verbose {
+					log.Printf("%s = %d", result.String(), result.Total)
 				}
 			}
 		}
