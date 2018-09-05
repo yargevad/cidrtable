@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"math"
 	"strconv"
@@ -81,7 +82,6 @@ func Repetitions(values []int, length int) [][]int {
 		for i, x := range indexes {
 			outputs[i] = values[x]
 		}
-		log.Printf("appending %+v\n", outputs)
 		rv = append(rv, outputs)
 
 		// increment permutation number
@@ -133,28 +133,109 @@ func Permutations(arr []int) [][]int {
 	return res
 }
 
-func Evaluate(nums, ops []int) int {
-	// set initial state to first number
-	var tmp = float64(nums[0])
-	// iterate over operators, applying next number
-	// assumes length of nums is always greater than length of ops
-	for n := 0; n < len(ops); n++ {
-		switch Operator(ops[n]) {
-		case Add:
-			tmp = tmp + float64(nums[n+1])
-		case Subtract:
-			tmp = tmp - float64(nums[n+1])
-		case Multiply:
-			tmp = tmp * float64(nums[n+1])
-		case Divide:
-			tmp = tmp / float64(nums[n+1])
+// Uniform returns true if all elements in the provided `[]int` are equal
+func Uniform(array []int) bool {
+	if array == nil {
+		// pathological case: nil array is uniform
+		return true
+	}
+	// loop doesn't execute for array with 1 element
+	for index := 1; index < len(array); index++ {
+		if array[index] != array[0] {
+			// false if any element isn't equal to the first
+			return false
 		}
 	}
-	// whole numbers only
-	if math.Floor(tmp) != tmp {
-		return -1
+	// otherwise true
+	return true
+}
+
+// Precedence returns an array of values for the supported operators.
+// Higher numbers indicate higher precedence.
+func Precedence(ops []int) []int {
+	// https://golang.org/ref/spec#Operator_precedence
+	// summary: (- +) = 4, (* /) = 5
+	var precedence = make([]int, len(ops))
+	for idx, op := range ops {
+		switch Operator(op) {
+		case Add, Subtract:
+			precedence[idx] = 4
+		case Multiply, Divide:
+			precedence[idx] = 5
+		}
 	}
-	return int(tmp)
+	return precedence
+}
+
+// ApplyOperator combines the first two arguments using the operator
+// specified by the third.
+func ApplyOperator(a, b float64, op int) float64 {
+	switch Operator(op) {
+	case Add:
+		return a + b
+	case Subtract:
+		return a - b
+	case Multiply:
+		return a * b
+	case Divide:
+		return a / b
+	}
+	return float64(0.0)
+}
+
+type Eval struct {
+	Int    int
+	String string
+}
+
+// Evaluate returns the result of the calculation given by interleaving `nums` and `ops`.
+// Operator precedence and any parenthesis placement are taken into account, thus the `[]int` return value.
+func Evaluate(nums, ops []int) []Eval {
+	var precedence = Precedence(ops)
+	var res = Eval{Int: -1}
+
+	if Uniform(precedence) {
+		// all operators have the same precedence, evaluate left to right
+		// ex: (1+2+3+4)
+		var numlen = len(nums)
+
+		// set initial state to first number
+		var tmp = float64(nums[0])
+
+		// `len(nums)` must always be `len(ops)+1` (asserted elsewhere)
+		// iterate over operators, applying number with next index
+		for n := 0; n < len(ops); n++ {
+			tmp = ApplyOperator(tmp, float64(nums[n+1]), ops[n])
+		}
+
+		// TODO: parens
+		expression := strings.Builder{}
+		for n := 0; n < numlen; n++ {
+			expression.WriteString(strconv.Itoa(nums[n]))
+			if n < (numlen - 1) {
+				expression.WriteString(Operator(ops[n]).String())
+			}
+		}
+		res.String = expression.String()
+
+		// whole numbers only
+		if math.Floor(tmp) != tmp {
+			return []Eval{res}
+		}
+		res.Int = int(math.Round(tmp))
+		return []Eval{res}
+
+	} else {
+		// FIXME: precedence is busted here
+		// FIXME: parens
+		// (1*2+3*4)
+		// (8/3)-8/3
+		// (8/3-8)/3
+		// 8/(3-8)/3
+		// 8/(3-8/3)
+		// 8/3-(8/3)
+	}
+	return []Eval{res}
 }
 
 func main() {
@@ -178,7 +259,7 @@ func main() {
 	// numbers are single-use, taken from command line
 	numbers := Permutations(*integers)
 	if *verbose {
-		log.Printf("found %d number permutations (no repetition)\n", len(numbers))
+		log.Printf("found %d number permutations (no repetition)\n%+v\n", len(numbers), numbers)
 	}
 
 	// operators are multiple-use, taken from constants defined above (values 0-3)
@@ -187,23 +268,16 @@ func main() {
 		log.Printf("found %d operator permutations (with repetition)\n%+v\n", len(operators), operators)
 	}
 
-	return
-
 	for _, nums := range numbers {
 		for _, ops := range operators {
-			result := Evaluate(nums, ops)
-			if *verbose || result == *target {
-				expression := strings.Builder{}
-				for n := 0; n < count; n++ {
-					expression.WriteString(strconv.Itoa(nums[n]))
-					if n < (count - 1) {
-						expression.WriteString(Operator(ops[n]).String())
+			results := Evaluate(nums, ops)
+			for _, result := range results {
+				if *verbose || result.Int == *target {
+					if result.Int == *target {
+						fmt.Printf("%s = %d !!!", result.String, result.Int)
+					} else if *verbose {
+						log.Printf("%s = %d", result.String, result.Int)
 					}
-				}
-				if result == *target {
-					log.Printf("%s = %d !!!", expression.String(), result)
-				} else if *verbose {
-					log.Printf("%s = %d", expression.String(), result)
 				}
 			}
 		}
