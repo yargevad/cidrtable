@@ -135,56 +135,6 @@ func Permutations(arr []int) [][]int {
 	return res
 }
 
-// Uniform returns true if all elements in the provided `[]int` are equal
-func Uniform(array []int) bool {
-	if array == nil {
-		// pathological case: nil array is uniform
-		return true
-	}
-	// loop doesn't execute for array with 1 element
-	for index := 1; index < len(array); index++ {
-		if array[index] != array[0] {
-			// false if any element isn't equal to the first
-			return false
-		}
-	}
-	// otherwise true
-	return true
-}
-
-// Precedence returns an array of values for the supported operators.
-// Higher numbers indicate higher precedence.
-func Precedence(ops []int) []int {
-	// https://golang.org/ref/spec#Operator_precedence
-	// summary: (- +) = 4, (* /) = 5
-	var precedence = make([]int, len(ops))
-	for idx, op := range ops {
-		switch Operator(op) {
-		case Add, Subtract:
-			precedence[idx] = 4
-		case Multiply, Divide:
-			precedence[idx] = 5
-		}
-	}
-	return precedence
-}
-
-// ApplyOperator combines the first two arguments using the operator
-// specified by the third.
-func ApplyOperator(a, b float64, op int) float64 {
-	switch Operator(op) {
-	case Add:
-		return a + b
-	case Subtract:
-		return a - b
-	case Multiply:
-		return a * b
-	case Divide:
-		return a / b
-	}
-	return float64(0.0)
-}
-
 type Combo struct {
 	Numbers   []int
 	Operators []int
@@ -321,7 +271,7 @@ func main() {
 				if result.Float >= (target_f-offBy) && result.Float <= (target_f+offBy) {
 					fmt.Printf("%s = %d\n", result.String(), result.Total)
 				} else if *verbose {
-					log.Printf("%s = %d (%.09f) (%.09f)", result.String(), result.Total, result.Float, target_f)
+					log.Printf("%s = %d (%.09f)", result.String(), result.Total, result.Float)
 				}
 			}
 		}
