@@ -7,6 +7,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+
+	"github.com/knetic/govaluate"
 )
 
 // Operator represents an allowed mathematical operation
@@ -187,6 +189,7 @@ type Combo struct {
 	Numbers   []int
 	Operators []int
 	Results   []Eval
+	Seen      map[string]bool
 }
 
 // Evaluate performs the calculation(s) given by interleaving `nums` and `ops`.
@@ -194,46 +197,40 @@ type Combo struct {
 // Any existing `Results` are cleared before calculation.
 // The results are placed into the aptly-named `Results` field.
 func (c *Combo) Evaluate() {
-	var precedence = Precedence(c.Operators)
 	c.Results = nil
-
-	if Uniform(precedence) {
-		// all operators have the same precedence, evaluate left to right
-		// ex: (1+2+3+4) (1*2*3*4) (1/2/3/4) (1-2-3-4)
-		current := Eval{Total: -1}
-		total := float64(c.Numbers[0])
-
-		// `len(nums)` must always be `len(ops)+1` (asserted elsewhere)
-		// iterate over operators, applying number with next index
-		for n := 0; n < len(c.Operators); n++ {
-			total = ApplyOperator(total, float64(c.Numbers[n+1]), c.Operators[n])
-		}
-		current.Float = total
-		current.Total = int(math.Floor(total))
-		current.combo = c
-
-		c.Results = append(c.Results, current)
-		return
-	}
-
-	// FIXME: handle these cases
-	// (8/3)-8/3
-	// (8/3-8)/3
-	// 8/(3-8)/3
-	// 8/(3-8/3)
-	// 8/3-(8/3)
-
 	current := &Eval{combo: c}
+
 	// iterate over all paren possibilities
 	for i := 0; i < len(c.Numbers)-1; i++ {
 		// outer counter indicates which index paren should come before
 		for j := i + 1; j < len(c.Numbers); j++ {
 			// inner counter indicates which index paren should come after
 			current.Parens = []int{i, j}
-			fmt.Printf("%s\n", current.String())
-			// handle parens first
-			// then precedence=5 pairs
-			// then precedence=4 pairs
+			str := current.String()
+			// skip permutations we've already processed
+			if _, ok := c.Seen[current.String()]; ok {
+				continue
+			}
+			c.Seen[current.String()] = true
+
+			expression, err := govaluate.NewEvaluableExpression(str)
+			if err != nil {
+				log.Fatalf("error parsing [%s]: %s", str, err)
+			}
+			result, err := expression.Evaluate(nil)
+			if err != nil {
+				log.Fatalf("error evaluating [%s]: %s", str, err)
+			}
+			current.combo = c
+			switch val := result.(type) {
+			case int:
+				current.Float = float64(val)
+				current.Total = val
+			case float64:
+				current.Float = val
+				current.Total = int(math.Round(val))
+			}
+			c.Results = append(c.Results, *current)
 			current.Str = ""
 		}
 	}
@@ -278,10 +275,13 @@ func main() {
 	integers := &Integers{}
 	flag.Var(integers, "n", "int to include (multiple)")
 
+	variance := flag.Int("variance", 5, "allow floating-point math errors after this many decimal places")
 	verbose := flag.Bool("verbose", false, "verbose logging")
 	target := flag.Int("target", 24, "desired result")
 
 	flag.Parse()
+
+	offBy := 1 / math.Pow(10, float64(*variance))
 
 	count := len(*integers)
 	if count < 2 {
@@ -304,17 +304,24 @@ func main() {
 		log.Printf("found %d operator permutations (with repetition)\n%+v\n", len(operators), operators)
 	}
 
+	seen := map[string]bool{}
+	target_f := float64(*target)
+
 	// for each permutation of numbers
 	for _, nums := range numbers {
 		// for each permutation of operators
 		for _, ops := range operators {
-			combo := &Combo{Numbers: nums, Operators: ops}
+			combo := &Combo{Numbers: nums, Operators: ops, Seen: seen}
 			combo.Evaluate()
 			for _, result := range combo.Results {
-				if result.Total == *target {
-					fmt.Printf("%s = %d MATCH\n", result.String(), result.Total)
+				// skip display of dupes
+
+				// both of these work, use the one that is easier to read
+				//if (math.Round(result.Float/offBy) * offBy) == target_f {
+				if result.Float >= (target_f-offBy) && result.Float <= (target_f+offBy) {
+					fmt.Printf("%s = %d\n", result.String(), result.Total)
 				} else if *verbose {
-					log.Printf("%s = %d", result.String(), result.Total)
+					log.Printf("%s = %d (%.09f) (%.09f)", result.String(), result.Total, result.Float, target_f)
 				}
 			}
 		}
