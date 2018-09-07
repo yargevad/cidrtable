@@ -1,8 +1,6 @@
-package main
+package twentyfour
 
 import (
-	"flag"
-	"fmt"
 	"log"
 	"math"
 	"strconv"
@@ -38,35 +36,6 @@ const (
 	Multiply
 	Divide
 )
-
-// Integers stores multiple values passed in on the command line
-type Integers []int
-
-// String converts our array of integers into a human-readable format
-func (integers *Integers) String() string {
-	buf := &strings.Builder{}
-	buf.WriteString("(")
-	for index, integer := range *integers {
-		buf.WriteString(strconv.Itoa(integer))
-		if index < len(*integers)-1 {
-			buf.WriteString(", ")
-		}
-	}
-	buf.WriteString(")")
-	return buf.String()
-}
-
-// Set takes the string value from the command line and appends it
-func (integers *Integers) Set(val string) error {
-	// https://stackoverflow.com/questions/28322997/how-to-get-a-list-of-values-into-a-flag-in-golang
-	str, err := strconv.Atoi(val)
-	if err != nil {
-		return err
-	}
-
-	*integers = append(*integers, str)
-	return nil
-}
 
 // Repetitions calculates permutations with reuse allowed, so the set
 // `(a, b, c, d)` can yield `(a, a, a, a)` as a valid result.
@@ -150,38 +119,32 @@ func (c *Combo) Evaluate() {
 	c.Results = nil
 	current := &Eval{combo: c}
 
-	// iterate over all paren possibilities
+	// iterate over all single paren possibilities
 	for i := 0; i < len(c.Numbers)-1; i++ {
 		// outer counter indicates which index paren should come before
 		for j := i + 1; j < len(c.Numbers); j++ {
 			// inner counter indicates which index paren should come after
+			current.Str = ""
 			current.Parens = []int{i, j}
 			str := current.String()
 			// skip permutations we've already processed
-			if _, ok := c.Seen[current.String()]; ok {
+			if _, ok := c.Seen[str]; ok {
 				continue
 			}
-			c.Seen[current.String()] = true
+			c.Seen[str] = true
 
-			expression, err := govaluate.NewEvaluableExpression(str)
-			if err != nil {
-				log.Fatalf("error parsing [%s]: %s", str, err)
-			}
-			result, err := expression.Evaluate(nil)
-			if err != nil {
-				log.Fatalf("error evaluating [%s]: %s", str, err)
-			}
 			current.combo = c
-			switch val := result.(type) {
-			case int:
-				current.Float = float64(val)
-				current.Total = val
-			case float64:
-				current.Float = val
-				current.Total = int(math.Round(val))
-			}
+			current.Evaluate()
 			c.Results = append(c.Results, *current)
-			current.Str = ""
+
+			// FIXME: not generic enough, only supports 2- or 4-digit combos
+			// generate two-paren cases, ex: (1+1)*(1+11)
+			if i == 0 && j == 1 && len(c.Numbers) >= 4 {
+				current.Str = ""
+				current.Parens = append(current.Parens, 2, len(c.Numbers)-1)
+				current.Evaluate()
+				c.Results = append(c.Results, *current)
+			}
 		}
 	}
 
@@ -193,8 +156,29 @@ type Eval struct {
 	Float  float64
 	Total  int
 
-	// makes it easier to stringify
+	// reference to parent necessary to stringify
 	combo *Combo
+}
+
+func (e *Eval) Evaluate() {
+	str := e.String()
+	expression, err := govaluate.NewEvaluableExpression(str)
+	if err != nil {
+		log.Fatalf("error parsing [%s]: %s", str, err)
+	}
+	result, err := expression.Evaluate(nil)
+	if err != nil {
+		log.Fatalf("error evaluating [%s]: %s", str, err)
+	}
+
+	switch val := result.(type) {
+	case int:
+		e.Float = float64(val)
+		e.Total = val
+	case float64:
+		e.Float = val
+		e.Total = int(math.Round(val))
+	}
 }
 
 // String transforms an `Eval` into a human-readable format
@@ -205,11 +189,12 @@ func (e *Eval) String() string {
 		expression := strings.Builder{}
 		numlen := len(e.combo.Numbers)
 		for n := 0; n < numlen; n++ {
-			if len(e.Parens) == 2 && e.Parens[0] == n {
+			// TODO: make this support more than 2 sets of parens
+			if (len(e.Parens) >= 2 && e.Parens[0] == n) || (len(e.Parens) == 4 && e.Parens[2] == n) {
 				expression.WriteString("(")
 			}
 			expression.WriteString(strconv.Itoa(e.combo.Numbers[n]))
-			if len(e.Parens) == 2 && e.Parens[1] == n {
+			if (len(e.Parens) >= 2 && e.Parens[1] == n) || (len(e.Parens) == 4 && e.Parens[3] == n) {
 				expression.WriteString(")")
 			}
 			if n < (numlen - 1) {
@@ -219,63 +204,4 @@ func (e *Eval) String() string {
 		e.Str = expression.String()
 	}
 	return e.Str
-}
-
-func main() {
-	integers := &Integers{}
-	flag.Var(integers, "n", "int to include (multiple)")
-
-	variance := flag.Int("variance", 5, "allow floating-point math errors after this many decimal places")
-	verbose := flag.Bool("verbose", false, "verbose logging")
-	target := flag.Int("target", 24, "desired result")
-
-	flag.Parse()
-
-	offBy := 1 / math.Pow(10, float64(*variance))
-
-	count := len(*integers)
-	if count < 2 {
-		log.Fatalf("must specify at least 2 numbers with --n (got %d)", count)
-	}
-
-	if *verbose {
-		log.Printf("combining integers %s with target %d...\n", integers, *target)
-	}
-
-	// numbers are single-use, taken from command line
-	numbers := Permutations(*integers)
-	if *verbose {
-		log.Printf("found %d number permutations (no repetition)\n%+v\n", len(numbers), numbers)
-	}
-
-	// operators are multiple-use, taken from constants defined above (values 0-3)
-	operators := Repetitions([]int{0, 1, 2, 3}, len(*integers)-1)
-	if *verbose {
-		log.Printf("found %d operator permutations (with repetition)\n%+v\n", len(operators), operators)
-	}
-
-	seen := map[string]bool{}
-	target_f := float64(*target)
-
-	// for each permutation of numbers
-	for _, nums := range numbers {
-		// for each permutation of operators
-		for _, ops := range operators {
-			combo := &Combo{Numbers: nums, Operators: ops, Seen: seen}
-			combo.Evaluate()
-			for _, result := range combo.Results {
-				// skip display of dupes
-
-				// both of these work, use the one that is easier to read
-				//if (math.Round(result.Float/offBy) * offBy) == target_f {
-				if result.Float >= (target_f-offBy) && result.Float <= (target_f+offBy) {
-					fmt.Printf("%s = %d\n", result.String(), result.Total)
-				} else if *verbose {
-					log.Printf("%s = %d (%.09f)", result.String(), result.Total, result.Float)
-				}
-			}
-		}
-
-	}
-
 }
