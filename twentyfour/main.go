@@ -40,7 +40,7 @@ const (
 // Repetitions calculates permutations with reuse allowed, so the set
 // `(a, b, c, d)` can yield `(a, a, a, a)` as a valid result.
 func Repetitions(values []int, length int) [][]int {
-	// https://rosettacode.org/wiki/Permutations_with_repetitions#Go
+	// readability refactor of: https://rosettacode.org/wiki/Permutations_with_repetitions#Go
 	rv := [][]int{}
 	inLen := len(values)
 	outLen := length
@@ -127,11 +127,14 @@ func (c *Combo) Evaluate() {
 			current.Str = ""
 			current.Parens = []int{i, j}
 			str := current.String()
-			// skip permutations we've already processed
-			if _, ok := c.Seen[str]; ok {
-				continue
+
+			if c.Seen != nil {
+				// skip permutations we've already processed
+				if _, ok := c.Seen[str]; ok {
+					continue
+				}
+				c.Seen[str] = true
 			}
-			c.Seen[str] = true
 
 			current.combo = c
 			current.Evaluate()

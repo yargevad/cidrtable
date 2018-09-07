@@ -48,7 +48,12 @@ type Solution struct {
 	String  string
 }
 
-// http://www.puzzlesland.com/games/24/
+/* SPOILER WARNING !!!
+ * The following array contains one possible solution for each listed combination.
+ * Read on only if you're ok with that.
+ */
+
+// Solutions from: http://www.puzzlesland.com/games/24/
 var solutions = []Solution{
 	{[]int{1, 1, 1, 1}, ""},
 	{[]int{1, 1, 1, 2}, ""},
